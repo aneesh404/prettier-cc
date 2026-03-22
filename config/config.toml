@@ -1,0 +1,23 @@
+# Rewind Rail — default configuration
+# Copy to ~/.config/rewind/config.toml to customize.
+
+# Directory for runtime data (sockets, session logs).
+# data_dir = "~/.rewind"
+
+# Maximum session age in days before automatic cleanup.
+# max_session_age_days = 7
+
+# Which side the rail appears on: "left" or "right".
+# rail_side = "right"
+
+# Rail width in terminal columns.
+# rail_width = 16
+
+# Hover trigger zone width in pixels (for the native overlay).
+# hover_zone_px = 8
+
+# Slide animation duration in milliseconds.
+# animation_ms = 200
+
+# Enable debug logging (or set RUST_LOG=rewind_daemon=debug).
+# debug = false

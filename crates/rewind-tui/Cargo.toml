@@ -1,0 +1,19 @@
+[package]
+name = "rewind-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Interactive TUI for Claude Code conversation timeline and rewind navigation"
+
+[[bin]]
+name = "rewind-tui"
+path = "src/main.rs"
+
+[dependencies]
+rewind-daemon = { path = "../rewind-daemon" }
+ratatui = "0.29"
+crossterm = "0.28"
+dirs = "6"
+notify = "8"
+portable-pty = "0.8"
+vt100 = "0.15"

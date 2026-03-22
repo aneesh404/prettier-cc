@@ -1,0 +1,8 @@
+[workspace]
+members = ["crates/rewind-daemon", "crates/rewind-cli", "crates/rewind-tui"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
