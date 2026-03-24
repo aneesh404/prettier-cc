@@ -48,8 +48,14 @@ pub fn parse_transcript_meta(path: &Path) -> Result<SessionInfo, String> {
         // Quick type check without full parse
         if line.contains("\"type\":\"user\"") {
             // Check if it's a real prompt (has string content) vs tool result
+            // Also skip system-injected messages (XML tags, continuation notices)
             if line.contains("\"content\":\"") {
-                prompt_count += 1;
+                // Quick check: extract content value to filter system prompts
+                let is_system = line.contains("\"content\":\"<")
+                    || line.contains("\"content\":\"This session is being continued");
+                if !is_system {
+                    prompt_count += 1;
+                }
             }
 
             // Extract metadata from first user message
@@ -150,7 +156,7 @@ pub fn parse_transcript_str(content: &str) -> Result<(SessionInfo, Vec<Turn>), S
                     })
                 );
 
-                if is_tool_result || prompt_text.is_empty() {
+                if is_tool_result || prompt_text.is_empty() || is_system_prompt(&prompt_text) {
                     // Not a real human prompt — just continue accumulating
                     // tool calls into the current turn.
                     continue;
@@ -261,6 +267,23 @@ pub fn parse_transcript_str(content: &str) -> Result<(SessionInfo, Vec<Turn>), S
     };
 
     Ok((info, turns))
+}
+
+/// Check if a user message is actually an internal system prompt injected by Claude Code
+/// (not a real human prompt). These include XML-tagged system messages, command outputs,
+/// continuation notices, etc.
+fn is_system_prompt(text: &str) -> bool {
+    let trimmed = text.trim();
+    // XML-tagged internal messages: <system-reminder>, <local-command-caveat>,
+    // <command-name>, <local-command-stdout>, etc.
+    if trimmed.starts_with('<') {
+        return true;
+    }
+    // Continuation/compaction notices
+    if trimmed.starts_with("This session is being continued from a previous") {
+        return true;
+    }
+    false
 }
 
 /// Summarize a tool call into a short string for display.
