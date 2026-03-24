@@ -5,29 +5,39 @@ use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Paragraph, Widget},
 };
 use std::io::{Read, Write};
 use std::sync::mpsc;
 use std::thread;
+
+/// How many times larger the PTY is than the visible viewport.
+const SCROLL_MULTIPLIER: u16 = 5;
 
 pub struct EmbeddedTerm {
     parser: vt100::Parser,
     writer: Box<dyn Write + Send>,
     output_rx: mpsc::Receiver<Vec<u8>>,
     child: Box<dyn portable_pty::Child + Send + Sync>,
-    pub rows: u16,
+    /// Total rows the PTY/parser uses (visible_rows * SCROLL_MULTIPLIER).
+    pub pty_rows: u16,
+    /// The number of rows the user actually sees in the viewport.
+    pub visible_rows: u16,
     pub cols: u16,
     pub exited: bool,
+    /// Viewport scroll offset: 0 = bottom (live), >0 = scrolled up by N rows.
+    pub viewport_offset: u16,
 }
 
 impl EmbeddedTerm {
     /// Spawn a command in a PTY with an optional working directory.
-    pub fn spawn(cmd: &str, args: &[&str], rows: u16, cols: u16, cwd: Option<&std::path::Path>) -> Result<Self, String> {
+    /// The PTY is created with `visible_rows * SCROLL_MULTIPLIER` rows so that
+    /// the child app renders more content, and we show a scrollable viewport.
+    pub fn spawn(cmd: &str, args: &[&str], visible_rows: u16, cols: u16, cwd: Option<&std::path::Path>) -> Result<Self, String> {
+        let pty_rows = visible_rows.saturating_mul(SCROLL_MULTIPLIER).max(visible_rows);
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
-                rows,
+                rows: pty_rows,
                 cols,
                 pixel_width: 0,
                 pixel_height: 0,
@@ -38,11 +48,9 @@ impl EmbeddedTerm {
         for arg in args {
             cmd_builder.arg(*arg);
         }
-        // Inherit environment
         for (key, val) in std::env::vars() {
             cmd_builder.env(key, val);
         }
-        // Set working directory if provided
         if let Some(dir) = cwd {
             if dir.exists() {
                 cmd_builder.cwd(dir);
@@ -63,10 +71,8 @@ impl EmbeddedTerm {
             .take_writer()
             .map_err(|e| format!("Failed to take PTY writer: {e}"))?;
 
-        // Drop the slave side — the child owns it now
         drop(pair.slave);
 
-        // Background thread to read PTY output
         let (tx, rx) = mpsc::channel();
         let mut reader = reader;
         thread::spawn(move || {
@@ -84,16 +90,18 @@ impl EmbeddedTerm {
             }
         });
 
-        let parser = vt100::Parser::new(rows, cols, 1000); // 1000 lines scrollback
+        let parser = vt100::Parser::new(pty_rows, cols, 0);
 
         Ok(EmbeddedTerm {
             parser,
             writer,
             output_rx: rx,
             child,
-            rows,
+            pty_rows,
+            visible_rows,
             cols,
             exited: false,
+            viewport_offset: 0,
         })
     }
 
@@ -131,26 +139,46 @@ impl EmbeddedTerm {
         }
     }
 
-    /// Resize the PTY.
-    pub fn resize(&mut self, rows: u16, cols: u16) {
-        self.rows = rows;
-        self.cols = cols;
-        self.parser.set_size(rows, cols);
-        // Note: portable-pty doesn't have a direct resize on the child,
-        // but the parser resize should handle display correctly.
+    /// Scroll the viewport up (toward earlier content) by N rows.
+    pub fn scroll_up(&mut self, n: u16) {
+        let max_offset = self.pty_rows.saturating_sub(self.visible_rows);
+        self.viewport_offset = (self.viewport_offset + n).min(max_offset);
     }
 
-    /// Get the current screen state for rendering.
-    pub fn screen(&self) -> &vt100::Screen {
-        self.parser.screen()
+    /// Scroll the viewport down (toward live/bottom) by N rows.
+    pub fn scroll_down(&mut self, n: u16) {
+        self.viewport_offset = self.viewport_offset.saturating_sub(n);
+    }
+
+    /// Snap viewport to the bottom (live view).
+    pub fn snap_to_bottom(&mut self) {
+        self.viewport_offset = 0;
+    }
+
+    /// Returns true if the viewport is scrolled up from the bottom.
+    pub fn is_scrolled(&self) -> bool {
+        self.viewport_offset > 0
     }
 
     /// Render the terminal screen into ratatui Lines.
+    /// Shows a viewport window into the oversized PTY screen.
+    /// When viewport_offset=0, shows the bottom rows (where input/status bar live).
+    /// When scrolled up, shows earlier rows.
     pub fn render_lines(&self, height: u16, width: u16) -> Vec<Line<'static>> {
         let screen = self.parser.screen();
         let mut lines = Vec::with_capacity(height as usize);
 
-        for row in 0..height {
+        // Compute which row range to render:
+        // offset=0 → show the bottom `height` rows of the PTY
+        // offset=N → shift the window up by N rows
+        let bottom_start = self.pty_rows.saturating_sub(height);
+        let start_row = bottom_start.saturating_sub(self.viewport_offset);
+
+        for row in start_row..(start_row + height) {
+            if row >= self.pty_rows {
+                lines.push(Line::from(""));
+                continue;
+            }
             let mut spans = Vec::new();
             let mut col = 0u16;
 
@@ -168,7 +196,12 @@ impl EmbeddedTerm {
                         let fg = vt100_color_to_ratatui(cell.fgcolor());
                         let bg = vt100_color_to_ratatui(cell.bgcolor());
 
-                        let mut style = Style::default().fg(fg).bg(bg);
+                        let mut style = if cell.inverse() {
+                            Style::default().fg(bg).bg(fg)
+                        } else {
+                            Style::default().fg(fg).bg(bg)
+                        };
+
                         if cell.bold() {
                             style = style.add_modifier(Modifier::BOLD);
                         }
@@ -177,13 +210,6 @@ impl EmbeddedTerm {
                         }
                         if cell.underline() {
                             style = style.add_modifier(Modifier::UNDERLINED);
-                        }
-                        if cell.inverse() {
-                            // Swap fg/bg
-                            style = Style::default().fg(bg).bg(fg);
-                            if cell.bold() {
-                                style = style.add_modifier(Modifier::BOLD);
-                            }
                         }
 
                         spans.push(Span::styled(ch, style));
@@ -216,10 +242,11 @@ fn vt100_color_to_ratatui(color: vt100::Color) -> Color {
 fn key_to_bytes(key: KeyEvent) -> Option<Vec<u8>> {
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     let alt = key.modifiers.contains(KeyModifiers::ALT);
+    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
 
     match key.code {
+        KeyCode::Enter if shift => Some(b"\x1b[13;2u".to_vec()),
         KeyCode::Char(c) if ctrl => {
-            // Ctrl+A = 0x01, Ctrl+B = 0x02, ..., Ctrl+Z = 0x1A
             let byte = (c.to_ascii_lowercase() as u8).wrapping_sub(b'a').wrapping_add(1);
             if byte <= 26 {
                 Some(vec![byte])
@@ -228,7 +255,7 @@ fn key_to_bytes(key: KeyEvent) -> Option<Vec<u8>> {
             }
         }
         KeyCode::Char(c) if alt => {
-            let mut bytes = vec![0x1b]; // ESC prefix for Alt
+            let mut bytes = vec![0x1b];
             let mut buf = [0u8; 4];
             bytes.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
             Some(bytes)
