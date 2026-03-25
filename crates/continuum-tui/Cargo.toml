@@ -1,16 +1,16 @@
 [package]
-name = "rewind-tui"
+name = "continuum-tui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Interactive TUI for Claude Code conversation timeline and rewind navigation"
+description = "Interactive TUI for Claude Code conversation history and session navigation"
 
 [[bin]]
-name = "rewind-tui"
+name = "continuum-tui"
 path = "src/main.rs"
 
 [dependencies]
-rewind-daemon = { path = "../rewind-daemon" }
+continuum-daemon = { path = "../continuum-daemon" }
 ratatui = "0.29"
 crossterm = "0.28"
 dirs = "6"

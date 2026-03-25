@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/rewind-daemon", "crates/rewind-cli", "crates/rewind-tui"]
+members = ["crates/continuum-daemon", "crates/continuum-cli", "crates/continuum-tui"]
 resolver = "2"
 
 [workspace.package]

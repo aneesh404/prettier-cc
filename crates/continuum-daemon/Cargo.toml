@@ -1,12 +1,12 @@
 [package]
-name = "rewind-daemon"
+name = "continuum-daemon"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Indexing daemon for Rewind Rail – terminal session history navigation"
+description = "Indexing daemon for Continuum – Claude Code session history navigation"
 
 [[bin]]
-name = "rewindd"
+name = "continuumd"
 path = "src/main.rs"
 
 [dependencies]
@@ -24,5 +24,5 @@ indexmap = "2"
 notify = "8"
 
 [lib]
-name = "rewind_core"
+name = "continuum_core"
 path = "src/lib.rs"

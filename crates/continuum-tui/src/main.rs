@@ -19,8 +19,8 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Padding, Paragraph},
     Terminal,
 };
-use rewind_core::protocol::{SessionInfo, Turn};
-use rewind_core::transcript::{parse_transcript, parse_transcript_meta};
+use continuum_core::protocol::{SessionInfo, Turn};
+use continuum_core::transcript::{parse_transcript, parse_transcript_meta};
 use std::io;
 use std::path::PathBuf;
 use std::sync::mpsc;

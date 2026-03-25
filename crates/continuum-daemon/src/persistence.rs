@@ -1,7 +1,7 @@
 //! Session persistence — saves/loads the command index to disk
 //! so data survives daemon restarts.
 //!
-//! Sessions are stored as individual JSON files under `~/.rewind/sessions/`.
+//! Sessions are stored as individual JSON files under `~/.continuum/sessions/`.
 
 use crate::protocol::ShellEvent;
 use crate::session::SessionStore;

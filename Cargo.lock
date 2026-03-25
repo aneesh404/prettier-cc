@@ -128,6 +128,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "continuum-cli"
+version = "0.1.0"
+dependencies = [
+ "continuum-daemon",
+ "dirs",
+ "serde_json",
+]
+
+[[package]]
+name = "continuum-daemon"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "dirs",
+ "indexmap",
+ "notify",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "continuum-tui"
+version = "0.1.0"
+dependencies = [
+ "continuum-daemon",
+ "crossterm",
+ "dirs",
+ "notify",
+ "portable-pty",
+ "ratatui",
+ "vt100",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -781,46 +821,6 @@ name = "regex-syntax"
 version = "0.8.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
-
-[[package]]
-name = "rewind-cli"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "rewind-daemon",
- "serde_json",
-]
-
-[[package]]
-name = "rewind-daemon"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "dirs",
- "indexmap",
- "notify",
- "serde",
- "serde_json",
- "tokio",
- "toml",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
-name = "rewind-tui"
-version = "0.1.0"
-dependencies = [
- "crossterm",
- "dirs",
- "notify",
- "portable-pty",
- "ratatui",
- "rewind-daemon",
- "vt100",
-]
 
 [[package]]
 name = "rustix"

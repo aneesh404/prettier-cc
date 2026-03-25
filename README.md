@@ -1,8 +1,8 @@
-# Rewind Rail
+# Continuum
 
-**Navigate your Claude Code conversations like a timeline. Rewind, replay, and understand every AI-assisted coding session.**
+**Navigate your Claude Code conversations like a timeline. Navigate and understand every AI-assisted coding session.**
 
-Rewind Rail is a terminal-native tool that parses Claude Code's conversation transcripts and presents them as a navigable timeline of checkpoints. Each checkpoint captures the user prompt, the AI response, every tool call made (file edits, bash commands, searches), token usage, and files touched — giving you full visibility into long, complex AI coding sessions.
+Continuum is a terminal-native tool that parses Claude Code's conversation transcripts and presents them as a navigable timeline of checkpoints. Each checkpoint captures the user prompt, the AI response, every tool call made (file edits, bash commands, searches), token usage, and files touched — giving you full visibility into long, complex AI coding sessions.
 
 ---
 
@@ -15,14 +15,14 @@ When working with Claude Code on large tasks — refactoring a codebase, debuggi
 - **How much context was consumed?** — Token usage across a session tells you when Claude is working with stale context.
 - **Where to resume?** — After stepping away, you need to find the right checkpoint to continue from.
 
-Claude Code stores conversation history as `.jsonl` transcript files, but they're raw JSON — thousands of lines of streaming message fragments, tool invocations, and metadata. Rewind Rail transforms this into something human-readable and navigable.
+Claude Code stores conversation history as `.jsonl` transcript files, but they're raw JSON — thousands of lines of streaming message fragments, tool invocations, and metadata. Continuum transforms this into something human-readable and navigable.
 
 ## How It Works
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                                                             │
-│   ~/.claude/projects/         Rewind Rail parses these      │
+│   ~/.claude/projects/         Continuum parses these      │
 │   ├── project-a/              transcript files and builds   │
 │   │   ├── session1.jsonl  ──► a structured timeline of      │
 │   │   └── session2.jsonl      turns, tool calls, and        │
@@ -30,20 +30,20 @@ Claude Code stores conversation history as `.jsonl` transcript files, but they'r
 │       └── session3.jsonl                                    │
 │                                                             │
 │   Shell Hooks (optional)      The daemon watches for new    │
-│   ├── rewind.zsh          ──► commands in your terminal     │
-│   ├── rewind.bash             and indexes them alongside    │
-│   └── rewind.fish             conversation history          │
+│   ├── continuum.zsh          ──► commands in your terminal     │
+│   ├── continuum.bash             and indexes them alongside    │
+│   └── continuum.fish             conversation history          │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-Rewind Rail consists of three components:
+Continuum consists of three components:
 
 | Component | Binary | Role |
 |-----------|--------|------|
-| **CLI** | `rewind` | Quick terminal commands: list projects, view timelines, peek at turns |
-| **TUI** | `rewind-tui` | Interactive terminal UI with project browser, session split view, and embedded Claude Code |
-| **Daemon** | `rewindd` | Background service that watches transcripts and ingests shell events |
+| **CLI** | `continuum` | Quick terminal commands: list projects, view timelines, peek at turns |
+| **TUI** | `continuum-tui` | Interactive terminal UI with project browser, session split view, and embedded Claude Code |
+| **Daemon** | `continuumd` | Background service that watches transcripts and ingests shell events |
 
 ---
 
@@ -55,7 +55,7 @@ Browse all your Claude Code projects, sorted by most recent activity:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ ⏪ Rewind Rail │ 28 projects                                     │
+│ ⏪ Continuum │ 28 projects                                     │
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │ ▸  Documents/git/repos/arcx/orderbook                            │
@@ -84,7 +84,7 @@ Select a project to see all sessions on the left and the conversation timeline o
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│ Rewind Rail │ Documents/git/repos/arcx/orderbook │ 32 sessions              │
+│ Continuum │ Documents/git/repos/arcx/orderbook │ 32 sessions              │
 ├─────────────────────┬───────────────────────────────┬────────────────────────┤
 │  Sessions           │  Timeline (main) · 536k↓ 2k↑ │  Details               │
 │                     │                               │                        │
@@ -114,7 +114,7 @@ Select a project to see all sessions on the left and the conversation timeline o
 Quick timeline view directly in your terminal:
 
 ```
-  ⏪ Rewind Rail  │  orderbook (main)  │  536.5k↓ 2.1k↑
+  ⏪ Continuum  │  orderbook (main)  │  536.5k↓ 2.1k↑
   ─────────────────────────────────────────────────────
 
    1   10:04  Use this git repo to push the content of this…
@@ -139,7 +139,7 @@ Quick timeline view directly in your terminal:
            5 tool calls · 3 files · 52.1k↓ 1.2k↑
 
   ─────────────────────────────────────────────────────
-  3 checkpoints · Use Esc+Esc in Claude Code to rewind
+  3 checkpoints · Use the TUI for full navigation
 ```
 
 ---
@@ -153,7 +153,7 @@ Every conversation turn is a **checkpoint** showing: the user prompt, timestamp,
 Browse sessions across all your Claude Code projects. Sessions are sorted by recency with metadata like prompt count, tool call count, and date — so you can find exactly the session you're looking for.
 
 ### Embedded Claude Code
-Launch Claude Code directly inside the TUI. Resume a previous session or fork it to explore an alternative approach — all without leaving Rewind Rail.
+Launch Claude Code directly inside the TUI. Resume a previous session or fork it to explore an alternative approach — all without leaving Continuum.
 
 ### Smart Transcript Parsing
 The transcript parser handles Claude Code's streaming `.jsonl` format: deduplicates streamed message fragments by UUID, extracts turns with proper grouping, and summarizes tool calls (file paths are shortened, bash commands are truncated, agent tasks are labeled).
@@ -173,7 +173,7 @@ The TUI watches transcript files for changes using `notify` and auto-refreshes w
 
 ### Prerequisites
 - **Rust** (1.70+) — [Install via rustup](https://rustup.rs/)
-- **Claude Code** — Rewind Rail reads Claude Code's transcript files from `~/.claude/projects/`
+- **Claude Code** — Continuum reads Claude Code's transcript files from `~/.claude/projects/`
 
 ### Quick Install
 
@@ -184,9 +184,9 @@ cd prettier-cc
 ```
 
 This will:
-1. Build all binaries (`rewind`, `rewind-tui`, `rewindd`) in release mode
+1. Build all binaries (`continuum`, `continuum-tui`, `continuumd`) in release mode
 2. Install them to `~/.local/bin/` (or `/usr/local/bin` as fallback)
-3. Copy shell hooks to `~/.config/rewind/`
+3. Copy shell hooks to `~/.config/continuum/`
 4. Auto-detect your shell and add the source line to your RC file
 5. Set up the daemon as a launchd service (macOS) or systemd service (Linux)
 
@@ -203,8 +203,8 @@ If you just want the interactive TUI and CLI:
 ```bash
 cargo build --release
 # Binaries are in target/release/
-./target/release/rewind --help
-./target/release/rewind-tui
+./target/release/continuum --help
+./target/release/continuum-tui
 ```
 
 ---
@@ -215,32 +215,32 @@ cargo build --release
 
 ```bash
 # List all projects with Claude Code sessions
-rewind projects
+continuum projects
 
 # Show timeline for the current project (latest session)
-rewind timeline
+continuum timeline
 
 # Show timeline for a specific project
-rewind timeline --project /path/to/project
+continuum timeline --project /path/to/project
 
 # Show a specific session (0 = latest, 1 = second latest, etc.)
-rewind timeline --session 1
+continuum timeline --session 1
 
 # Peek at a specific turn with full details
-rewind peek 3
+continuum peek 3
 
 # List sessions for a project
-rewind sessions
+continuum sessions
 ```
 
 ### TUI
 
 ```bash
 # Launch the interactive TUI
-rewind-tui
+continuum-tui
 
 # Open a specific transcript file directly
-rewind-tui /path/to/transcript.jsonl
+continuum-tui /path/to/transcript.jsonl
 ```
 
 **Keybindings:**
@@ -264,11 +264,11 @@ rewind-tui /path/to/transcript.jsonl
 ## Architecture
 
 ```
-rewind-rail/
+continuum/
 ├── crates/
-│   ├── rewind-cli/          # CLI binary — quick terminal commands
+│   ├── continuum-cli/          # CLI binary — quick terminal commands
 │   │   └── src/main.rs
-│   ├── rewind-daemon/       # Core library + daemon binary
+│   ├── continuum-daemon/       # Core library + daemon binary
 │   │   └── src/
 │   │       ├── config.rs        # TOML config loader
 │   │       ├── transcript.rs    # .jsonl transcript parser
@@ -277,15 +277,15 @@ rewind-rail/
 │   │       ├── persistence.rs   # Append-only session storage
 │   │       ├── listener.rs      # Unix socket I/O
 │   │       └── protocol.rs      # Shared data types
-│   └── rewind-tui/          # Interactive terminal UI
+│   └── continuum-tui/          # Interactive terminal UI
 │       └── src/
 │           ├── main.rs          # ratatui-based UI (projects, split, timeline)
 │           ├── embedded.rs      # PTY-based embedded Claude Code
 │           └── chat.rs          # Interactive chat (WIP)
 ├── shell/
-│   ├── rewind.bash          # Bash integration (DEBUG trap + PROMPT_COMMAND)
-│   ├── rewind.zsh           # Zsh integration (preexec/precmd hooks)
-│   └── rewind.fish          # Fish integration (event system)
+│   ├── continuum.bash          # Bash integration (DEBUG trap + PROMPT_COMMAND)
+│   ├── continuum.zsh           # Zsh integration (preexec/precmd hooks)
+│   └── continuum.fish          # Fish integration (event system)
 ├── config/
 │   └── config.toml          # Default daemon configuration
 ├── install.sh               # Full installer (build + shell + service)
@@ -305,12 +305,12 @@ rewind-rail/
 
 ## Configuration
 
-The daemon reads `~/.config/rewind/config.toml`:
+The daemon reads `~/.config/continuum/config.toml`:
 
 ```toml
-data_dir = "~/.rewind"
-ingest_socket = "~/.rewind/ingest.sock"
-query_socket = "~/.rewind/query.sock"
+data_dir = "~/.continuum"
+ingest_socket = "~/.continuum/ingest.sock"
+query_socket = "~/.continuum/query.sock"
 max_session_age_days = 7
 rail_side = "right"
 rail_width = 16
@@ -336,8 +336,8 @@ cargo test
 
 ### Areas to Contribute
 
-- **Daemon completion** — The daemon (`rewindd`) has the architecture in place but needs the main event loop wired up to serve queries over the Unix socket.
-- **Chat interface** — `crates/rewind-tui/src/chat.rs` is scaffolded for an interactive chat mode inside the TUI.
+- **Daemon completion** — The daemon (`continuumd`) has the architecture in place but needs the main event loop wired up to serve queries over the Unix socket.
+- **Chat interface** — `crates/continuum-tui/src/chat.rs` is scaffolded for an interactive chat mode inside the TUI.
 - **Search & filter** — Add the ability to search turns by prompt text, tool name, or file path.
 - **Diff view** — Show file diffs for each turn (the transcript contains file snapshots).
 - **Export** — Export a session timeline to markdown or HTML for sharing.

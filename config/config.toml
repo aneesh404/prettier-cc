@@ -1,8 +1,8 @@
-# Rewind Rail — default configuration
-# Copy to ~/.config/rewind/config.toml to customize.
+# Continuum — default configuration
+# Copy to ~/.config/continuum/config.toml to customize.
 
 # Directory for runtime data (sockets, session logs).
-# data_dir = "~/.rewind"
+# data_dir = "~/.continuum"
 
 # Maximum session age in days before automatic cleanup.
 # max_session_age_days = 7
@@ -19,5 +19,5 @@
 # Slide animation duration in milliseconds.
 # animation_ms = 200
 
-# Enable debug logging (or set RUST_LOG=rewind_daemon=debug).
+# Enable debug logging (or set RUST_LOG=continuum_daemon=debug).
 # debug = false

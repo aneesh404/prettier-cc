@@ -1,4 +1,4 @@
-use rewind_core::transcript::parse_transcript;
+use continuum_core::transcript::parse_transcript;
 use std::path::{Path, PathBuf};
 
 // ── ANSI helpers ────────────────────────────────────────────────────────────
@@ -167,7 +167,7 @@ fn cmd_sessions(project: Option<&str>) {
             println!("  {GREEN}●{RESET} {BOLD}{display_name}{RESET}  {DIM}({count} sessions){RESET}");
         }
         println!();
-        println!("{DIM}Use: rewind timeline --project <name>{RESET}");
+        println!("{DIM}Use: continuum timeline --project <name>{RESET}");
         return;
     }
 
@@ -241,7 +241,7 @@ fn cmd_timeline(project: Option<&str>, session_idx: usize) {
 
     println!();
     println!(
-        "{BOLD}  ⏪ Rewind Rail{RESET}  {DIM}│{RESET}  {CYAN}{project_name}{RESET} {DIM}({branch}){RESET}  {DIM}│{RESET}  {tokens}"
+        "{BOLD}  Continuum{RESET}  {DIM}│{RESET}  {CYAN}{project_name}{RESET} {DIM}({branch}){RESET}  {DIM}│{RESET}  {tokens}"
     );
     println!("{DIM}  ─────────────────────────────────────────────────────{RESET}");
     println!();
@@ -305,7 +305,7 @@ fn cmd_timeline(project: Option<&str>, session_idx: usize) {
         "{DIM}  ─────────────────────────────────────────────────────{RESET}"
     );
     println!(
-        "  {DIM}{count} checkpoints · Use Esc+Esc in Claude Code to rewind{RESET}",
+        "  {DIM}{count} checkpoints · Use the TUI for full navigation{RESET}",
         count = turns.len(),
     );
     println!();
@@ -385,10 +385,10 @@ fn cmd_peek(project: Option<&str>, turn_idx: usize) {
 // ── Main ────────────────────────────────────────────────────────────────────
 
 fn print_help() {
-    println!("{BOLD}rewind{RESET} — Claude Code conversation timeline & rewind navigator");
+    println!("{BOLD}continuum{RESET} — Claude Code conversation history navigator");
     println!();
     println!("{BOLD}USAGE{RESET}");
-    println!("  rewind <command> [options]");
+    println!("  continuum <command> [options]");
     println!();
     println!("{BOLD}COMMANDS{RESET}");
     println!("  {GREEN}sessions{RESET}                List Claude Code sessions for current project");
@@ -401,10 +401,10 @@ fn print_help() {
     println!("  {DIM}--session <N>{RESET}      Session index (0 = latest, default)");
     println!();
     println!("{BOLD}EXAMPLES{RESET}");
-    println!("  {DIM}rewind timeline{RESET}              Show latest session's conversation");
-    println!("  {DIM}rewind peek 3{RESET}                Peek at turn 3's details");
-    println!("  {DIM}rewind sessions{RESET}              List sessions for current project");
-    println!("  {DIM}rewind projects{RESET}              List all tracked projects");
+    println!("  {DIM}continuum timeline{RESET}              Show latest session's conversation");
+    println!("  {DIM}continuum peek 3{RESET}                Peek at turn 3's details");
+    println!("  {DIM}continuum sessions{RESET}              List sessions for current project");
+    println!("  {DIM}continuum projects{RESET}              List all tracked projects");
 }
 
 fn main() {
@@ -464,7 +464,7 @@ fn main() {
                 });
                 cmd_peek(proj_ref, idx);
             } else {
-                eprintln!("{RED}error:{RESET} peek requires a turn number. Use `rewind timeline` to see turns.");
+                eprintln!("{RED}error:{RESET} peek requires a turn number. Use `continuum timeline` to see turns.");
             }
         }
         Some("help" | "--help" | "-h") => print_help(),
@@ -474,7 +474,7 @@ fn main() {
                 cmd_peek(proj_ref, idx);
             } else {
                 eprintln!("{RED}error:{RESET} unknown command: {unknown}");
-                eprintln!("Run {BOLD}rewind help{RESET} for usage.");
+                eprintln!("Run {BOLD}continuum help{RESET} for usage.");
             }
         }
         None => cmd_timeline(proj_ref, session_idx),

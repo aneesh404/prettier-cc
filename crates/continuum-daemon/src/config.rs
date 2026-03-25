@@ -1,4 +1,4 @@
-//! Daemon configuration — loaded from `~/.config/rewind/config.toml`.
+//! Daemon configuration — loaded from `~/.config/continuum/config.toml`.
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -79,7 +79,7 @@ impl Config {
 fn default_data_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join(".rewind")
+        .join(".continuum")
 }
 
 fn default_config_path() -> PathBuf {
@@ -89,6 +89,6 @@ fn default_config_path() -> PathBuf {
                 .unwrap_or_else(|| PathBuf::from("/tmp"))
                 .join(".config")
         })
-        .join("rewind")
+        .join("continuum")
         .join("config.toml")
 }

@@ -194,7 +194,7 @@ impl<'a> MinimapBuilder<'a> {
         let (segments, _vp) = self.build(tty, height, 0.8, 0.2)?;
         let mut lines = Vec::with_capacity(segments.len() + 2);
 
-        lines.push("╭─ REWIND ─────╮".into());
+        lines.push("╭─ CONTINUUM ─────╮".into());
 
         for seg in &segments {
             if seg.command_id.is_none() {
