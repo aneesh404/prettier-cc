@@ -1,0 +1,150 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            suffix: ""
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            suffix: ""
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            suffix: ""
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            suffix: ""
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # needed for changelog generation
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # Cross-compilation support for Linux ARM64
+      - name: Install cross-compilation tools
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      - name: Build release binaries
+        run: cargo build --release --target ${{ matrix.target }}
+
+      # Ad-hoc codesign on macOS
+      - name: Codesign macOS binaries
+        if: runner.os == 'macOS'
+        run: |
+          codesign -s - -f target/${{ matrix.target }}/release/continuum
+          codesign -s - -f target/${{ matrix.target }}/release/continuum-tui
+          codesign -s - -f target/${{ matrix.target }}/release/continuumd
+
+      - name: Package artifacts
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/continuum dist/
+          cp target/${{ matrix.target }}/release/continuum-tui dist/
+          cp target/${{ matrix.target }}/release/continuumd dist/
+          cp -r shell dist/
+          tar czf continuum-${{ matrix.target }}.tar.gz -C dist .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: continuum-${{ matrix.target }}
+          path: continuum-${{ matrix.target }}.tar.gz
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          TAG=${GITHUB_REF#refs/tags/}
+
+          echo "## Continuum $TAG" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "### Initial Release" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            git log --pretty=format:"- %s" >> CHANGELOG.md
+          else
+            echo "### Changes since $PREV_TAG" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            # Group commits by type
+            echo "#### Features" >> CHANGELOG.md
+            git log $PREV_TAG..HEAD --pretty=format:"- %s" --grep="^Add\|^Implement\|^Support" >> CHANGELOG.md || true
+            echo "" >> CHANGELOG.md
+            echo "#### Fixes" >> CHANGELOG.md
+            git log $PREV_TAG..HEAD --pretty=format:"- %s" --grep="^Fix\|^Resolve\|^Correct" >> CHANGELOG.md || true
+            echo "" >> CHANGELOG.md
+            echo "#### Other" >> CHANGELOG.md
+            git log $PREV_TAG..HEAD --pretty=format:"- %s" --grep="^Rebrand\|^Rename\|^Update\|^Refactor\|^Polish\|^Clean" >> CHANGELOG.md || true
+            echo "" >> CHANGELOG.md
+          fi
+
+          echo "" >> CHANGELOG.md
+          echo "### Binaries" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "| Platform | Architecture | Archive |" >> CHANGELOG.md
+          echo "|----------|-------------|---------|" >> CHANGELOG.md
+          echo "| macOS | Apple Silicon (arm64) | \`continuum-aarch64-apple-darwin.tar.gz\` |" >> CHANGELOG.md
+          echo "| macOS | Intel (x86_64) | \`continuum-x86_64-apple-darwin.tar.gz\` |" >> CHANGELOG.md
+          echo "| Linux | x86_64 | \`continuum-x86_64-unknown-linux-gnu.tar.gz\` |" >> CHANGELOG.md
+          echo "| Linux | arm64 | \`continuum-aarch64-unknown-linux-gnu.tar.gz\` |" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "### Install" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo '```bash' >> CHANGELOG.md
+          echo "# Download and extract for your platform, then:" >> CHANGELOG.md
+          echo "cp continuum continuum-tui continuumd ~/.local/bin/" >> CHANGELOG.md
+          echo "# macOS: ad-hoc sign the binaries" >> CHANGELOG.md
+          echo "codesign -s - -f ~/.local/bin/continuum-tui" >> CHANGELOG.md
+          echo '```' >> CHANGELOG.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: CHANGELOG.md
+          files: artifacts/**/*.tar.gz
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
