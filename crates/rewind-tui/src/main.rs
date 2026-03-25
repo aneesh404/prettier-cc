@@ -48,6 +48,8 @@ struct AgentInstance {
     term: embedded::EmbeddedTerm,
     session_id: String,
     label: String,
+    custom_name: Option<String>,
+    repo_name: String,
     started_at: std::time::Instant,
     forked: bool,
     dangerous: bool,
@@ -152,6 +154,10 @@ struct App {
     // Agent command palette (Spotlight-style overlay)
     agent_palette_open: bool,
     agent_palette_state: ListState,
+
+    // Inline rename state for the agent palette
+    renaming_agent: Option<usize>,  // index of agent being renamed
+    rename_buf: String,             // current text input
 }
 
 impl App {
@@ -189,6 +195,8 @@ impl App {
             embedded_term_area: ratatui::layout::Rect::default(),
             agent_palette_open: false,
             agent_palette_state: ListState::default(),
+            renaming_agent: None,
+            rename_buf: String::new(),
         };
         app.load_projects();
         if !app.projects.is_empty() {
@@ -561,11 +569,15 @@ fn open_embedded(app: &mut App, fork: bool, dangerous: bool, rows: u16, cols: u1
         info.session_id.clone()
     };
     let danger_tag = if dangerous { " ⚠" } else { "" };
-    let label = if fork {
-        format!("Fork {sid_short}{danger_tag}")
-    } else {
-        format!("Resume {sid_short}{danger_tag}")
-    };
+    let kind = if fork { "Fork" } else { "Resume" };
+    let label = format!("{kind} {sid_short}{danger_tag}");
+
+    // Extract repo name from project_dir (last path component)
+    let repo_name = std::path::Path::new(&info.project_dir)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     let cwd = std::path::PathBuf::from(&info.project_dir);
@@ -576,6 +588,8 @@ fn open_embedded(app: &mut App, fork: bool, dangerous: bool, rows: u16, cols: u1
                 term,
                 session_id: info.session_id.clone(),
                 label,
+                custom_name: None,
+                repo_name,
                 started_at: std::time::Instant::now(),
                 forked: fork,
                 dangerous,
@@ -1983,12 +1997,16 @@ fn render_agent_palette(frame: &mut ratatui::Frame, app: &mut App) {
     ]));
 
     // ── Content rows ──
+    // Layout per row: │ ▸●1 <name>   <uptime>  <status>  ◀ active    <repo> │
     let content_rows = popup_h.saturating_sub(3) as usize;
+    let renaming = app.renaming_agent;
+    let rename_buf_clone = app.rename_buf.clone();
     for i in 0..content_rows {
         if i < app.agents.len() {
             let agent = &app.agents[i];
             let is_active = active_idx == Some(i);
             let is_selected = selected == Some(i);
+            let is_renaming = renaming == Some(i);
             let running = !agent.term.exited;
             let row_bg = if is_selected { highlight_bg } else { popup_bg };
 
@@ -2004,22 +2022,38 @@ fn render_agent_palette(frame: &mut ratatui::Frame, app: &mut App) {
             let state_color = if running { Color::DarkGray } else { Color::Red };
             let name_fg = if is_active { Color::Cyan } else { Color::White };
             let name_mod = if is_active { Modifier::BOLD } else { Modifier::empty() };
-            let active_s: String = if is_active { "  ◀ active".into() } else { String::new() };
+
+            // Display name: custom_name > label
+            let display_name = agent.custom_name.as_deref().unwrap_or(&agent.label);
+
+            // Right-aligned repo name
+            let repo_display = format!(" {}", agent.repo_name);
+            let repo_w = repo_display.len();
 
             let mut spans: Vec<Span<'static>> = vec![
                 Span::styled("│", border_style),
                 Span::styled(marker_s, Style::default().fg(Color::Cyan).bg(row_bg)),
                 Span::styled(format!("{dot}{num} "), Style::default().fg(dot_color).bg(row_bg).add_modifier(Modifier::BOLD)),
-                Span::styled(agent.label.clone(), Style::default().fg(name_fg).bg(row_bg).add_modifier(name_mod)),
-                Span::styled(format!("   {uptime}   "), Style::default().fg(Color::DarkGray).bg(row_bg)),
-                Span::styled(state_label.to_string(), Style::default().fg(state_color).bg(row_bg)),
             ];
-            if is_active {
-                spans.push(Span::styled(active_s, Style::default().fg(Color::Yellow).bg(row_bg)));
+
+            if is_renaming {
+                // Show inline rename input
+                let input_text = format!("{}█", rename_buf_clone);
+                spans.push(Span::styled(input_text, Style::default().fg(Color::White).bg(Color::Rgb(30, 55, 75)).add_modifier(Modifier::BOLD)));
+            } else {
+                spans.push(Span::styled(display_name.to_string(), Style::default().fg(name_fg).bg(row_bg).add_modifier(name_mod)));
+                spans.push(Span::styled(format!("  {uptime}  "), Style::default().fg(Color::DarkGray).bg(row_bg)));
+                spans.push(Span::styled(state_label.to_string(), Style::default().fg(state_color).bg(row_bg)));
+                if is_active {
+                    spans.push(Span::styled("  ◀", Style::default().fg(Color::Yellow).bg(row_bg)));
+                }
             }
-            let content_w: usize = spans.iter().skip(1).map(|s| s.width()).sum();
-            let pad = inner_w.saturating_sub(content_w);
-            spans.push(Span::styled(" ".repeat(pad), Style::default().bg(row_bg)));
+
+            // Compute left content width, fill gap, then repo name on right
+            let left_w: usize = spans.iter().skip(1).map(|s| s.width()).sum();
+            let gap = inner_w.saturating_sub(left_w + repo_w);
+            spans.push(Span::styled(" ".repeat(gap), Style::default().bg(row_bg)));
+            spans.push(Span::styled(repo_display, Style::default().fg(Color::Rgb(80, 90, 110)).bg(row_bg)));
             spans.push(Span::styled("│", border_style));
             lines.push(Line::from(spans));
         } else {
@@ -2039,18 +2073,32 @@ fn render_agent_palette(frame: &mut ratatui::Frame, app: &mut App) {
     ]));
 
     // ── Footer hints ──
-    let mut footer_spans: Vec<Span<'static>> = vec![
-        Span::styled(" 1-9", Style::default().fg(Color::Cyan).bg(popup_bg)),
-        Span::styled(" jump  ", Style::default().fg(Color::DarkGray).bg(popup_bg)),
-        Span::styled("↑↓", Style::default().fg(Color::Cyan).bg(popup_bg)),
-        Span::styled(" select  ", Style::default().fg(Color::DarkGray).bg(popup_bg)),
-        Span::styled("Enter", Style::default().fg(Color::Cyan).bg(popup_bg)),
-        Span::styled(" switch  ", Style::default().fg(Color::DarkGray).bg(popup_bg)),
-        Span::styled("x", Style::default().fg(Color::Red).bg(popup_bg)),
-        Span::styled(" kill  ", Style::default().fg(Color::DarkGray).bg(popup_bg)),
-        Span::styled("Esc", Style::default().fg(Color::Cyan).bg(popup_bg)),
-        Span::styled(" close", Style::default().fg(Color::DarkGray).bg(popup_bg)),
-    ];
+    let is_renaming = app.renaming_agent.is_some();
+    let mut footer_spans: Vec<Span<'static>> = if is_renaming {
+        vec![
+            Span::styled(" Type name", Style::default().fg(Color::Cyan).bg(popup_bg)),
+            Span::styled("  ", Style::default().bg(popup_bg)),
+            Span::styled("Enter", Style::default().fg(Color::Cyan).bg(popup_bg)),
+            Span::styled(" save  ", Style::default().fg(Color::DarkGray).bg(popup_bg)),
+            Span::styled("Esc", Style::default().fg(Color::Cyan).bg(popup_bg)),
+            Span::styled(" cancel", Style::default().fg(Color::DarkGray).bg(popup_bg)),
+        ]
+    } else {
+        vec![
+            Span::styled(" 1-9", Style::default().fg(Color::Cyan).bg(popup_bg)),
+            Span::styled(" jump  ", Style::default().fg(Color::DarkGray).bg(popup_bg)),
+            Span::styled("↑↓", Style::default().fg(Color::Cyan).bg(popup_bg)),
+            Span::styled(" select  ", Style::default().fg(Color::DarkGray).bg(popup_bg)),
+            Span::styled("Enter", Style::default().fg(Color::Cyan).bg(popup_bg)),
+            Span::styled(" switch  ", Style::default().fg(Color::DarkGray).bg(popup_bg)),
+            Span::styled("r", Style::default().fg(Color::Cyan).bg(popup_bg)),
+            Span::styled(" rename  ", Style::default().fg(Color::DarkGray).bg(popup_bg)),
+            Span::styled("x", Style::default().fg(Color::Red).bg(popup_bg)),
+            Span::styled(" kill  ", Style::default().fg(Color::DarkGray).bg(popup_bg)),
+            Span::styled("Esc", Style::default().fg(Color::Cyan).bg(popup_bg)),
+            Span::styled(" close", Style::default().fg(Color::DarkGray).bg(popup_bg)),
+        ]
+    };
     let footer_w: usize = footer_spans.iter().map(|s| s.width()).sum();
     let footer_pad = w.saturating_sub(footer_w);
     footer_spans.push(Span::styled(" ".repeat(footer_pad), Style::default().bg(popup_bg)));
@@ -2203,6 +2251,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 // ── Agent palette key handling (consumes all keys when open) ──
                 else if app.agent_palette_open {
+                    // ── Rename mode: capture text input ──
+                    if app.renaming_agent.is_some() {
+                        match key.code {
+                            KeyCode::Esc => {
+                                app.renaming_agent = None;
+                                app.rename_buf.clear();
+                            }
+                            KeyCode::Enter => {
+                                if let Some(idx) = app.renaming_agent {
+                                    if idx < app.agents.len() {
+                                        let name = app.rename_buf.trim().to_string();
+                                        if name.is_empty() {
+                                            app.agents[idx].custom_name = None;
+                                        } else {
+                                            app.agents[idx].custom_name = Some(name);
+                                        }
+                                    }
+                                }
+                                app.renaming_agent = None;
+                                app.rename_buf.clear();
+                            }
+                            KeyCode::Backspace => {
+                                app.rename_buf.pop();
+                            }
+                            KeyCode::Char(c) => {
+                                if app.rename_buf.len() < 30 {
+                                    app.rename_buf.push(c);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    // ── Normal palette navigation ──
+                    else {
                     match key.code {
                         KeyCode::Esc => {
                             app.agent_palette_open = false;
@@ -2225,6 +2307,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     app.agents_state.select(Some(i));
                                     app.screen = Screen::Embedded { focus: Pane::Right };
                                     app.agent_palette_open = false;
+                                }
+                            }
+                        }
+                        KeyCode::Char('r') => {
+                            if let Some(i) = app.agent_palette_state.selected() {
+                                if i < app.agents.len() {
+                                    app.renaming_agent = Some(i);
+                                    // Pre-fill with current custom name if exists
+                                    app.rename_buf = app.agents[i].custom_name.clone().unwrap_or_default();
                                 }
                             }
                         }
@@ -2257,6 +2348,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                         _ => {} // palette consumes all other keys
+                    }
                     }
                 }
                 else { match app.screen.clone() {
