@@ -1933,97 +1933,132 @@ fn render_agent_palette(frame: &mut ratatui::Frame, app: &mut App) {
         return;
     }
 
-    let area = frame.area();
+    let full_area = frame.area();
+    let popup_bg = Color::Rgb(15, 18, 22);
+    let dim_bg = Color::Rgb(5, 6, 8);
+    let highlight_bg = Color::Rgb(25, 45, 60);
+    let border_style = Style::default().fg(Color::Cyan).bg(popup_bg);
     let active_idx = app.active_agent_idx;
     let selected = app.agent_palette_state.selected();
 
-    // Compute centered rect: 50% width, height = agents + chrome (header line, footer line, borders, padding)
-    let popup_w = (area.width / 2).max(50).min(area.width.saturating_sub(4));
-    let popup_h = (app.agents.len() as u16 + 6).min(area.height.saturating_sub(4)).max(7);
-    let x = (area.width.saturating_sub(popup_w)) / 2;
-    let y = (area.height.saturating_sub(popup_h)) / 2;
-    let popup_area = ratatui::layout::Rect::new(x, y, popup_w, popup_h);
+    // ── Layer 1: Full-screen dim backdrop ──
+    // Paint EVERY cell in the frame to a dark space so NO background content
+    // is visible anywhere — not inside the popup, not around it.
+    {
+        let buf = frame.buffer_mut();
+        for cy in full_area.top()..full_area.bottom() {
+            for cx in full_area.left()..full_area.right() {
+                if let Some(cell) = buf.cell_mut((cx, cy)) {
+                    cell.set_char(' ');
+                    cell.fg = dim_bg;
+                    cell.bg = dim_bg;
+                    cell.modifier = Modifier::empty();
+                }
+            }
+        }
+    }
 
-    // Clear the area behind the popup
-    let clear = Block::default().style(Style::default().bg(Color::Rgb(15, 18, 22)));
-    frame.render_widget(clear, popup_area);
+    // ── Layer 2: Popup with manually padded lines ──
+    // Every line is EXACTLY popup_w display-columns wide so the Paragraph
+    // widget writes to every cell in popup_area — zero unwritten cells.
+    let popup_w = (full_area.width * 2 / 3).max(60).min(full_area.width.saturating_sub(4));
+    let popup_h = (app.agents.len() as u16 + 5).min(full_area.height.saturating_sub(4)).max(7);
+    let x0 = (full_area.width.saturating_sub(popup_w)) / 2;
+    let y0 = (full_area.height.saturating_sub(popup_h)) / 2;
+    let popup_area = ratatui::layout::Rect::new(x0, y0, popup_w, popup_h);
+    let w = popup_w as usize;
+    let inner_w = w.saturating_sub(2); // minus left and right │
 
-    // Split popup: content + footer hint
-    let inner_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(3), Constraint::Length(1)])
-        .split(popup_area);
+    let mut lines: Vec<Line<'static>> = Vec::with_capacity(popup_h as usize);
 
-    // Build agent list items
-    let items: Vec<ListItem> = app.agents.iter().enumerate().map(|(i, agent)| {
-        let is_active = active_idx == Some(i);
-        let is_selected = selected == Some(i);
-        let running = !agent.term.exited;
-        let dot = if running { "●" } else { "○" };
-        let dot_color = if running { Color::Green } else { Color::Red };
-
-        let elapsed = agent.started_at.elapsed().as_secs();
-        let uptime = if elapsed < 60 {
-            format!("{elapsed}s")
-        } else if elapsed < 3600 {
-            format!("{}m", elapsed / 60)
-        } else {
-            format!("{}h", elapsed / 3600)
-        };
-
-        let state_label = if running { "running" } else { "done" };
-        let state_color = if running { Color::DarkGray } else { Color::Red };
-        let marker = if is_selected { "▸ " } else { "  " };
-        let num = i + 1;
-
-        let name_style = if is_active {
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::White)
-        };
-
-        ListItem::new(Line::from(vec![
-            Span::styled(marker, Style::default().fg(Color::Cyan)),
-            Span::styled(format!("{dot}{num} "), Style::default().fg(dot_color).add_modifier(Modifier::BOLD)),
-            Span::styled(&agent.label, name_style),
-            Span::styled(format!("   {uptime}   "), Style::default().fg(Color::DarkGray)),
-            Span::styled(state_label, Style::default().fg(state_color)),
-            if is_active {
-                Span::styled("  ◀ active", Style::default().fg(Color::Yellow))
-            } else {
-                Span::raw("")
-            },
-        ]))
-    }).collect();
-
+    // ── Top border: ╭─ Agents (N) ──...──╮ ──
     let title = format!(" Agents ({}) ", app.agents.len());
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_type(ratatui::widgets::BorderType::Rounded)
-                .border_style(Style::default().fg(Color::Cyan))
-                .title(Span::styled(title, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)))
-                .style(Style::default().bg(Color::Rgb(15, 18, 22))),
-        )
-        .highlight_style(Style::default().bg(Color::Rgb(25, 45, 60)));
-    frame.render_stateful_widget(list, inner_chunks[0], &mut app.agent_palette_state);
+    let title_w = title.len(); // ASCII only
+    let fill = inner_w.saturating_sub(1 + title_w);
+    lines.push(Line::from(vec![
+        Span::styled("╭─", border_style),
+        Span::styled(title, Style::default().fg(Color::Cyan).bg(popup_bg).add_modifier(Modifier::BOLD)),
+        Span::styled("─".repeat(fill), border_style),
+        Span::styled("╮", border_style),
+    ]));
 
-    // Footer hints inside popup
-    let hints = Line::from(vec![
-        Span::styled(" 1-9", Style::default().fg(Color::Cyan)),
-        Span::styled(" jump  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("↑↓", Style::default().fg(Color::Cyan)),
-        Span::styled(" select  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Enter", Style::default().fg(Color::Cyan)),
-        Span::styled(" switch  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("x", Style::default().fg(Color::Red)),
-        Span::styled(" kill  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Esc", Style::default().fg(Color::Cyan)),
-        Span::styled(" close", Style::default().fg(Color::DarkGray)),
-    ]);
-    let footer = Paragraph::new(hints).style(Style::default().bg(Color::Rgb(15, 18, 22)));
-    frame.render_widget(footer, inner_chunks[1]);
+    // ── Content rows ──
+    let content_rows = popup_h.saturating_sub(3) as usize;
+    for i in 0..content_rows {
+        if i < app.agents.len() {
+            let agent = &app.agents[i];
+            let is_active = active_idx == Some(i);
+            let is_selected = selected == Some(i);
+            let running = !agent.term.exited;
+            let row_bg = if is_selected { highlight_bg } else { popup_bg };
+
+            let dot = if running { "●" } else { "○" };
+            let dot_color = if running { Color::Green } else { Color::Red };
+            let marker_s: String = if is_selected { " ▸".into() } else { "  ".into() };
+            let num = i + 1;
+            let elapsed = agent.started_at.elapsed().as_secs();
+            let uptime = if elapsed < 60 { format!("{elapsed}s") }
+                else if elapsed < 3600 { format!("{}m", elapsed / 60) }
+                else { format!("{}h", elapsed / 3600) };
+            let state_label = if running { "running" } else { "done" };
+            let state_color = if running { Color::DarkGray } else { Color::Red };
+            let name_fg = if is_active { Color::Cyan } else { Color::White };
+            let name_mod = if is_active { Modifier::BOLD } else { Modifier::empty() };
+            let active_s: String = if is_active { "  ◀ active".into() } else { String::new() };
+
+            let mut spans: Vec<Span<'static>> = vec![
+                Span::styled("│", border_style),
+                Span::styled(marker_s, Style::default().fg(Color::Cyan).bg(row_bg)),
+                Span::styled(format!("{dot}{num} "), Style::default().fg(dot_color).bg(row_bg).add_modifier(Modifier::BOLD)),
+                Span::styled(agent.label.clone(), Style::default().fg(name_fg).bg(row_bg).add_modifier(name_mod)),
+                Span::styled(format!("   {uptime}   "), Style::default().fg(Color::DarkGray).bg(row_bg)),
+                Span::styled(state_label.to_string(), Style::default().fg(state_color).bg(row_bg)),
+            ];
+            if is_active {
+                spans.push(Span::styled(active_s, Style::default().fg(Color::Yellow).bg(row_bg)));
+            }
+            let content_w: usize = spans.iter().skip(1).map(|s| s.width()).sum();
+            let pad = inner_w.saturating_sub(content_w);
+            spans.push(Span::styled(" ".repeat(pad), Style::default().bg(row_bg)));
+            spans.push(Span::styled("│", border_style));
+            lines.push(Line::from(spans));
+        } else {
+            lines.push(Line::from(vec![
+                Span::styled("│", border_style),
+                Span::styled(" ".repeat(inner_w), Style::default().bg(popup_bg)),
+                Span::styled("│", border_style),
+            ]));
+        }
+    }
+
+    // ── Bottom border: ╰──...──╯ ──
+    lines.push(Line::from(vec![
+        Span::styled("╰", border_style),
+        Span::styled("─".repeat(w.saturating_sub(2)), border_style),
+        Span::styled("╯", border_style),
+    ]));
+
+    // ── Footer hints ──
+    let mut footer_spans: Vec<Span<'static>> = vec![
+        Span::styled(" 1-9", Style::default().fg(Color::Cyan).bg(popup_bg)),
+        Span::styled(" jump  ", Style::default().fg(Color::DarkGray).bg(popup_bg)),
+        Span::styled("↑↓", Style::default().fg(Color::Cyan).bg(popup_bg)),
+        Span::styled(" select  ", Style::default().fg(Color::DarkGray).bg(popup_bg)),
+        Span::styled("Enter", Style::default().fg(Color::Cyan).bg(popup_bg)),
+        Span::styled(" switch  ", Style::default().fg(Color::DarkGray).bg(popup_bg)),
+        Span::styled("x", Style::default().fg(Color::Red).bg(popup_bg)),
+        Span::styled(" kill  ", Style::default().fg(Color::DarkGray).bg(popup_bg)),
+        Span::styled("Esc", Style::default().fg(Color::Cyan).bg(popup_bg)),
+        Span::styled(" close", Style::default().fg(Color::DarkGray).bg(popup_bg)),
+    ];
+    let footer_w: usize = footer_spans.iter().map(|s| s.width()).sum();
+    let footer_pad = w.saturating_sub(footer_w);
+    footer_spans.push(Span::styled(" ".repeat(footer_pad), Style::default().bg(popup_bg)));
+    lines.push(Line::from(footer_spans));
+
+    // ── Render as single Paragraph — writes to every cell ──
+    let popup = Paragraph::new(lines).style(Style::default().bg(popup_bg));
+    frame.render_widget(popup, popup_area);
 }
 
 // ── Main render dispatch ────────────────────────────────────────────────────
